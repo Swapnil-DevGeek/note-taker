@@ -16,6 +16,13 @@ export interface Note {
   updatedAt: string;
 }
 
+export type SyncStatus = 'synced' | 'pending' | 'deleted';
+
+export interface LocalNote extends Note {
+  syncStatus: SyncStatus;
+  serverUpdatedAt?: string;
+}
+
 export const UNUSED = 'this ensures the module is not empty';
 
 export type Theme = 'light' | 'dark';

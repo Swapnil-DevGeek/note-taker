@@ -1,11 +1,9 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
 import StarterKit from '@tiptap/starter-kit';
-import Underline from '@tiptap/extension-underline';
 import TextAlign from '@tiptap/extension-text-align';
 import Placeholder from '@tiptap/extension-placeholder';
-import Link from '@tiptap/extension-link';
 import Typography from '@tiptap/extension-typography';
 import Image from '@tiptap/extension-image';
 import TaskList from '@tiptap/extension-task-list';
@@ -14,10 +12,11 @@ import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { common, createLowlight } from 'lowlight';
 import { SlashCommand, suggestion } from './editor/SlashCommand';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getNote, updateNote } from '../lib/api';
+import { getNoteFromLocal, updateNoteLocal } from '../lib/noteRepository';
 import { useRecoilValue } from 'recoil';
 import { selectedNoteIdAtom } from '../state/atoms/selectedNoteIdAtom';
 import { themeAtom } from '../state/atoms/themeAtom';
+import { userAtom } from '../state/atoms/userAtom';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import { 
@@ -30,25 +29,42 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/t
 import { cn } from '../lib/utils';
 import { useRecoilState } from 'recoil';
 import { sidebarOpenAtom } from '../state/atoms/sidebarOpenAtom';
+import type { LocalNote } from '../types';
 
 
 export const Editor = () => {
     const selectedNoteId = useRecoilValue(selectedNoteIdAtom);
     const theme = useRecoilValue(themeAtom);
+    const user = useRecoilValue(userAtom);
     const [sidebarOpen, setSidebarOpen] = useRecoilState(sidebarOpenAtom);
     const queryClient = useQueryClient();
     const [debouncedContent, setDebouncedContent] = useState('');
 
-    const { data: note, isLoading } = useQuery({
+    // Get user ID for query key
+    const userId = (user as { _id?: string })?._id || '';
+
+    const { data: note, isLoading } = useQuery<LocalNote | null>({
         queryKey: ['note', selectedNoteId],
-        queryFn: () => getNote(selectedNoteId!),
+        queryFn: () => getNoteFromLocal(selectedNoteId!),
         enabled: !!selectedNoteId,
     });
 
     const updateNoteMutation = useMutation({
-        mutationFn: updateNote,
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['notes'] });
+        mutationFn: ({ id, title, content }: { id: string; title: string; content: string }) =>
+            updateNoteLocal(id, { title, content }),
+        onSuccess: (updatedNote) => {
+            if (updatedNote) {
+                // Optimistically update the single note cache
+                queryClient.setQueryData(['note', updatedNote._id], updatedNote);
+                
+                // Optimistically update the notes list cache
+                queryClient.setQueryData<LocalNote[]>(['notes', userId], (old) => {
+                    if (!old) return old;
+                    return old.map(note => 
+                        note._id === updatedNote._id ? updatedNote : note
+                    );
+                });
+            }
         },
     });
 

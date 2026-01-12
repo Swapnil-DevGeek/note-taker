@@ -10,8 +10,15 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: 1,
+      retry: false,
       refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      staleTime: Infinity, // Data is always fresh since we control updates
+      networkMode: 'always', // Always execute queries even when offline
+    },
+    mutations: {
+      retry: false,
+      networkMode: 'always', // Always execute mutations even when offline
     },
   },
 })

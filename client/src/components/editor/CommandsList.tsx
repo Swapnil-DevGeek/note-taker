@@ -1,16 +1,9 @@
-import React, {
+import {
   useState,
   useEffect,
   forwardRef,
   useImperativeHandle,
 } from 'react'
-import {
-  Heading1,
-  Heading2,
-  Heading3,
-  Type,
-  Image as ImageIcon,
-} from 'lucide-react'
 import { cn } from '../../lib/utils'
 
 export const CommandsList = forwardRef((props: any, ref) => {

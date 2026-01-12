@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Note } from '../types';
+import type { Note, LocalNote } from '../types';
 
 const api = axios.create({
   baseURL: 'http://localhost:8000/api',
@@ -35,6 +35,24 @@ export const updateNote = async ({ id, title, content }: { id: string; title: st
 
 export const deleteNote = async (id: string): Promise<void> => {
   await api.delete(`/notes/${id}`);
+};
+
+// Sync API endpoints
+export interface SyncPushResult {
+  created: Array<{ localId: string; serverId: string; updatedAt: string }>;
+  updated: Array<{ serverId: string; updatedAt: string }>;
+  deleted: string[];
+  errors: Array<{ noteId: string; error: string }>;
+}
+
+export const syncPushNotes = async (notes: LocalNote[]): Promise<SyncPushResult> => {
+  const response = await api.post('/sync/push', { notes });
+  return response.data;
+};
+
+export const syncPullNotes = async (): Promise<LocalNote[]> => {
+  const response = await api.get('/sync/pull');
+  return response.data;
 };
 
 export default api;

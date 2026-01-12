@@ -190,6 +190,96 @@ app.delete('/api/notes/:id', verifyToken, async (req, res) => {
     }
 });
 
+// Sync Routes for Offline-First
+app.post('/api/sync/push', verifyToken, async (req, res) => {
+    try {
+        const user = await User.findOne({ email: req.user.email });
+        if (!user) return res.status(401).json({ error: 'User not found' });
+
+        const { notes } = req.body;
+        const results = {
+            created: [],
+            updated: [],
+            deleted: [],
+            errors: []
+        };
+
+        for (const note of notes) {
+            try {
+                if (note.syncStatus === 'deleted') {
+                    // Handle deletion - only if it's a server ID (not local_*)
+                    if (!note._id.startsWith('local_')) {
+                        await Note.findOneAndDelete({ _id: note._id, userId: user._id });
+                        results.deleted.push(note._id);
+                    } else {
+                        // Local-only note that was deleted before syncing - just acknowledge
+                        results.deleted.push(note._id);
+                    }
+                } else if (note._id.startsWith('local_')) {
+                    // Create new note on server
+                    const newNote = new Note({
+                        title: note.title || 'Untitled',
+                        content: note.content || '',
+                        userId: user._id
+                    });
+                    await newNote.save();
+                    results.created.push({
+                        localId: note._id,
+                        serverId: newNote._id.toString(),
+                        updatedAt: newNote.updatedAt.toISOString()
+                    });
+                } else {
+                    // Update existing note
+                    const updatedNote = await Note.findOneAndUpdate(
+                        { _id: note._id, userId: user._id },
+                        { title: note.title, content: note.content },
+                        { new: true }
+                    );
+                    if (updatedNote) {
+                        results.updated.push({
+                            serverId: updatedNote._id.toString(),
+                            updatedAt: updatedNote.updatedAt.toISOString()
+                        });
+                    }
+                }
+            } catch (noteError) {
+                results.errors.push({ noteId: note._id, error: noteError.message });
+            }
+        }
+
+        res.json(results);
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.get('/api/sync/pull', verifyToken, async (req, res) => {
+    try {
+        const user = await User.findOne({ email: req.user.email });
+        if (!user) return res.status(401).json({ error: 'User not found' });
+
+        const notes = await Note.find({ userId: user._id }).sort({ updatedAt: -1 });
+        
+        // Transform notes to include sync metadata
+        const syncedNotes = notes.map(note => ({
+            _id: note._id.toString(),
+            title: note.title,
+            content: note.content,
+            userId: note.userId.toString(),
+            createdAt: note.createdAt.toISOString(),
+            updatedAt: note.updatedAt.toISOString(),
+            syncStatus: 'synced',
+            serverUpdatedAt: note.updatedAt.toISOString()
+        }));
+
+        res.json(syncedNotes);
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`)
 })

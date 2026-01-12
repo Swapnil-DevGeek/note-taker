@@ -1,15 +1,17 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { Sidebar } from '../components/Sidebar';
 import { Editor } from '../components/Editor';
-import { useRecoilState, useRecoilValue } from 'recoil';
-import { themeAtom } from '../state/atoms/themeAtom';
+import { useRecoilState } from 'recoil';
 import { useParams } from 'react-router';
 import { selectedNoteIdAtom } from '../state/atoms/selectedNoteIdAtom';
+import { useSync } from '../hooks/useSync';
 
 const Notebook = () => {
-    const theme = useRecoilValue(themeAtom);
     const { id } = useParams();
     const [selectedNoteId, setSelectedNoteId] = useRecoilState(selectedNoteIdAtom);
+    
+    // Initialize sync service
+    useSync();
 
     useEffect(() => {
         if (id && id !== selectedNoteId) {
@@ -26,3 +28,4 @@ const Notebook = () => {
 };
 
 export default Notebook;
+

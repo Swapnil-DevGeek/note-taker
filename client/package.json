@@ -53,6 +53,7 @@
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "^4.1.18",
     "tippy.js": "^6.3.7",
+    "uuid": "^13.0.0",
     "yup": "^1.7.1"
   },
   "devDependencies": {
@@ -60,6 +61,7 @@
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
+    "@types/uuid": "^11.0.0",
     "@vitejs/plugin-react": "4.3.4",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",

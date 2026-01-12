@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getNotes, createNote, deleteNote } from '../lib/api';
-import { useRecoilState, useSetRecoilState } from 'recoil';
+import { getNotesFromLocal, createNoteLocal, deleteNoteLocal } from '../lib/noteRepository';
+import { useRecoilState, useRecoilValue, useSetRecoilState } from 'recoil';
 import { selectedNoteIdAtom } from '../state/atoms/selectedNoteIdAtom';
 import { themeAtom } from '../state/atoms/themeAtom';
 import { userAtom } from '../state/atoms/userAtom';
@@ -9,13 +9,13 @@ import { useLogoutUser } from '../state/actions/authActions';
 import { 
     Plus, Trash2, Moon, Sun, 
     MoreVertical, User as UserIcon,
-    FileText, LogOut, PanelLeftClose
+    FileText, LogOut, PanelLeftClose, Cloud, CloudOff
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { sidebarOpenAtom } from '../state/atoms/sidebarOpenAtom';
 import { ScrollArea } from './ui/scroll-area';
 import { Separator } from './ui/separator';
-import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
+import { Avatar, AvatarFallback } from './ui/avatar';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -25,36 +25,58 @@ import {
     DropdownMenuTrigger,
 } from './ui/dropdown-menu';
 import { cn } from '../lib/utils';
-import type { Note } from '../types';
+import type { LocalNote } from '../types';
 
 export const Sidebar = () => {
     const navigate = useNavigate();
     const { id } = useParams();
     const setSelectedNoteId = useSetRecoilState(selectedNoteIdAtom);
     const [theme, setTheme] = useRecoilState(themeAtom);
-    const [user, setUser] = useRecoilState(userAtom);
+    const user = useRecoilValue(userAtom);
     const [sidebarOpen, setSidebarOpen] = useRecoilState(sidebarOpenAtom);
     const queryClient = useQueryClient();
     const logout = useLogoutUser();
 
-    const { data: notes, isLoading } = useQuery<Note[]>({
-        queryKey: ['notes'],
-        queryFn: getNotes,
+    // Get user ID for IndexedDB queries
+    const userId = (user as { _id?: string })?._id || '';
+
+    const { data: notes, isLoading } = useQuery<LocalNote[]>({
+        queryKey: ['notes', userId],
+        queryFn: () => getNotesFromLocal(userId),
+        enabled: !!userId,
     });
 
     const createNoteMutation = useMutation({
-        mutationFn: createNote,
+        mutationFn: () => createNoteLocal(userId, { title: 'New Note', content: '' }),
+        onMutate: async () => {
+            // Cancel any outgoing refetches
+            await queryClient.cancelQueries({ queryKey: ['notes', userId] });
+        },
         onSuccess: (newNote) => {
-            queryClient.invalidateQueries({ queryKey: ['notes'] });
+            // Optimistically update the cache with the new note
+            queryClient.setQueryData<LocalNote[]>(['notes', userId], (old) => {
+                return old ? [newNote, ...old] : [newNote];
+            });
             setSelectedNoteId(newNote._id);
             navigate(`/notebook/${newNote._id}`);
         },
     });
 
     const deleteNoteMutation = useMutation({
-        mutationFn: deleteNote,
+        mutationFn: deleteNoteLocal,
+        onMutate: async (noteId: string) => {
+            // Cancel any outgoing refetches
+            await queryClient.cancelQueries({ queryKey: ['notes', userId] });
+            
+            // Optimistically remove the note from cache
+            queryClient.setQueryData<LocalNote[]>(['notes', userId], (old) => {
+                return old ? old.filter(note => note._id !== noteId) : [];
+            });
+            
+            // Also invalidate the single note query
+            queryClient.removeQueries({ queryKey: ['note', noteId] });
+        },
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['notes'] });
             if (id) {
                 setSelectedNoteId(null);
                 navigate('/notebook');
@@ -67,7 +89,7 @@ export const Sidebar = () => {
     };
 
     const handleCreateNote = () => {
-        createNoteMutation.mutate({ title: 'New Note', content: '' });
+        createNoteMutation.mutate();
     };
 
     const handleNoteClick = (noteId: string) => {
@@ -149,13 +171,19 @@ export const Sidebar = () => {
                                             "w-4 h-4 shrink-0",
                                             id === note._id ? "text-blue-500" : "text-zinc-400"
                                         )} />
-                                        <span className="text-sm truncate font-medium">{note.title || 'Untitled'}</span>
+                                        <span className="text-sm truncate font-medium flex-1">{note.title || 'Untitled'}</span>
+                                        {note.syncStatus === 'pending' && (
+                                            <CloudOff className="w-3 h-3 text-amber-500 shrink-0" />
+                                        )}
+                                        {note.syncStatus === 'synced' && (
+                                            <Cloud className="w-3 h-3 text-green-500 shrink-0 opacity-0 group-hover:opacity-50" />
+                                        )}
                                         <button
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 deleteNoteMutation.mutate(note._id);
                                             }}
-                                            className="ml-auto opacity-0 group-hover:opacity-100 p-1 hover:text-red-500 transition-opacity"
+                                            className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-500 transition-opacity"
                                         >
                                             <Trash2 className="w-3.5 h-3.5" />
                                         </button>
